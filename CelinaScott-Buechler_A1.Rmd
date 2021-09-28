@@ -1,0 +1,163 @@
+---
+title: "CelinaScott-Buechler_A1"
+author: "Celina Scott-Buechler"
+date: "9/23/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+First, I need to install and load necessary packages.
+
+```{r}
+#install.packages(c('readr','tidyverse', 'dplyr','zoo', 'plotly', 'sf', 'tigris', 'leaflet', 'censusapi', 'ggplot2', 'ellipsis', 'generics'), dependencies = TRUE)
+
+library('readr')
+library('tidyverse')
+library('plotly')
+library('sf')
+library('tigris')
+library('leaflet')
+library('censusapi')
+library('ggplot2')
+library('lubridate')
+library('zoo')
+library('dplyr')
+```
+
+Then, I run two loops: 
+One that goes through each of the gas use files downloaded from PG&E,
+and the other the goes through the electricity use files.
+
+In each case, the loop ones and reads the files, then binds them together 
+for a unified data frame. 
+
+
+```{r, error=TRUE}
+
+years <- 2017:2021
+quarters <- 1:4
+type <- "Electric"
+
+pge_elec_full <- NULL
+
+for(quarter in quarters) {
+  for(year in years){
+  
+    filename <- 
+      paste0(
+        "pge/PGE_",
+        year,
+        "_Q",
+        quarter,
+        "_",
+        type,
+        "UsageByZip.csv"
+      )
+    
+    #print(filename)
+    
+    temp <- read_csv(filename)
+    
+    pge_elec_full <- rbind(pge_elec_full,temp)
+    # Note rbind requires field names to be consistent for every new thing that you add.
+    
+    saveRDS(pge_elec_full, "pge_elec_full.rds")
+}}
+
+pge_elec_full['Total_kBTUs'] <- pge_elec_full$TOTALKWH *3.412
+
+View(pge_elec_full)
+
+```
+```{r, error=TRUE}
+
+###Gas
+
+gas <- "Gas"
+
+pge_gas_full <- NULL
+
+for(quarter in quarters) {
+  for(year in years){
+    
+    filename <- 
+      paste0(
+        "pge/PGE_",
+        year,
+        "_Q",
+        quarter,
+        "_",
+        gas,
+        "UsageByZip.csv"
+      )
+    
+    #print(filename)
+    
+    temp <- read_csv(filename)
+    
+    pge_gas_full <- rbind(pge_gas_full,temp)
+    # Note rbind requires field names to be consistent for every new thing that you add.
+    
+    saveRDS(pge_gas_full, "pge_gas_full.rds")
+  }}
+
+
+pge_gas_full['Total_kBTUs'] <- pge_gas_full$TOTALTHM*99976.1/1000
+
+View(pge_gas_full)
+```
+Then, I filter out only the categories of interest: residential and commercial
+consumption of gas and electricity. The month and year columns are combined into
+a single date column. Then I can begin graphing. The first graph shows 
+residential energy use, broken down by gas and electricity, each month from 2017
+to 2021. The next shows the same for commercial energy use.
+```{r}
+
+pge_elec_filter <- select(pge_elec_full, c(-TOTALKWH, -AVERAGEKWH)) %>%
+  filter(CUSTOMERCLASS %in% c("Elec- Residential","Elec- Commercial"))
+
+#View(pge_elec_filter)
+
+
+pge_gas_filter <- select(pge_gas_full, c(-TOTALTHM, -AVERAGETHM)) %>%
+  filter(CUSTOMERCLASS %in% c("Gas- Residential","Gas- Commercial"))
+
+#View(pge_gas_filter)
+
+pge_both <- rbind(pge_gas_filter, pge_elec_filter)
+
+pge_both$Date <- as.yearmon(paste(pge_both$YEAR, pge_both$MONTH), "%Y %m")
+View(pge_both)
+
+pge_both %>% 
+  filter(CUSTOMERCLASS %in% c('Gas- Residential','Elec- Residential')) %>%
+  ggplot(aes(y=Total_kBTUs, x=Date, fill= CUSTOMERCLASS))+
+  geom_bar(stat='identity')
+```
+
+```{r pressure, echo=FALSE}
+pge_both %>% 
+  filter(CUSTOMERCLASS %in% c('Gas- Commercial','Elec- Commercial')) %>%
+  ggplot(aes(y=Total_kBTUs, x=Date, fill= CUSTOMERCLASS))+
+  geom_bar(stat='identity')
+
+```
+To see what effects the pandemic might have had on energy consumption, 
+```{r}
+pge_both %>% 
+  filter(CUSTOMERCLASS %in% c('Gas- Commercial','Elec- Commercial','Gas- Residential','Elec- Residential'), YEAR %in% c(2019,2020,2021)) %>%
+  ggplot(aes(y=Total_kBTUs, x=Date, fill= CUSTOMERCLASS))+
+  geom_bar(stat='identity')
+```
+
+```{r}
+pge_both %>% 
+  filter(CUSTOMERCLASS %in% c('Gas- Commercial','Elec- Commercial','Gas- Residential','Elec- Residential'), YEAR %in% c(2019,2020,2021)) %>%
+  ggplot(aes(y=cumsum(Total_kBTUs), x=Date, fill= CUSTOMERCLASS))+
+  geom_bar(stat='identity')
+
+
+```
